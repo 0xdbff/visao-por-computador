@@ -84,7 +84,7 @@ typedef struct image {
     uint8_t Bpp;
     /// Image type
     Netpbm type;
-} Image;  // 34 bytes struct
+} Image;  // 32 bytes struct
 
 /// Return the number of bytes needed to store a channel
 static inline uint8_t bytes_per_channel(int precision) {
