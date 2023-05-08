@@ -22,4 +22,4 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
   target_compile_definitions(main PRIVATE DEBUG)
 endif()
 
-target_compile_definitions(main PRIVATE ALIGN_MEM)
+# target_compile_definitions(main PRIVATE ALIGN_MEM)
