@@ -58,6 +58,8 @@ typedef enum netpbm {
     INVALID_TYPE
 } Netpbm;
 
+typedef enum ImageTp { BLACK, WHITE, GRAYSCALE, RGB, RGB16, HSV } ImageTp;
+
 /// Image definition structure
 typedef struct imageNpbm {
     /// Image ptr to first section of allocated data (byte)
@@ -68,6 +70,8 @@ typedef struct imageNpbm {
     uint32_t max_value;
     /// Number of image channels
     uint8_t channels;
+    /// Size of the image data
+    size_t data_size;
     /// Bits per pixel
     uint8_t bpp;
     /// Image type
@@ -89,12 +93,12 @@ static inline ImageNpbm* free_image(ImageNpbm* img) {
 }
 
 /// Allocate a new image.
-static inline ImageNpbm* new_image(size_t width, size_t height,
-                                   uint8_t channels, uint32_t precision,
-                                   Netpbm type) {
+static inline ImageNpbm* alloc_image(size_t width, size_t height,
+                                     uint8_t channels, uint32_t precision,
+                                     Netpbm type) {
     ImageNpbm* img = (ImageNpbm*)malloc(sizeof(ImageNpbm));
     img->data = NULL;
-    size_t data_size;
+    // size_t data_size;
     if (img == NULL) return NULL;
 
     img->width = width;
@@ -105,22 +109,22 @@ static inline ImageNpbm* new_image(size_t width, size_t height,
 
     switch (type) {
         case PBM:
-            data_size = (width * height + 7) / 8;
+            img->data_size = (width * height + 7) / 8;
             break;
         case PGM:
         case PPM:
-            data_size =
+            img->data_size =
                 width * height * channels * bytes_per_channel(precision);
             break;
         case PAM:
-            data_size =
+            img->data_size =
                 width * height * (channels + 1) * bytes_per_channel(precision);
             break;
         default:
             free_image(img);
             return NULL;
     }
-    img->data = (uint8_t*)calloc(data_size, sizeof(uint8_t));
+    img->data = (uint8_t*)calloc(img->data_size, sizeof(uint8_t));
     return img->data == NULL ? free_image(img) : img;
 }
 
@@ -171,7 +175,7 @@ static ImageNpbm* pbm_img_from_fp(FILE* file) {
     }
     fgetc(file);
 
-    img = new_image(width, height, 1, 1, PBM);
+    img = alloc_image(width, height, 1, 1, PBM);
     if (!img) {
         LOG("Cannot allocate memory!");
         return img;
@@ -187,7 +191,7 @@ static ImageNpbm* pbm_img_from_fp(FILE* file) {
     return img;
 }
 
-/// Read a image PBM, PGM, PPM, PAM
+/// Read a image PBM, PGM, PPM
 static ImageNpbm* read_image(const char* filepath) {
     FILE* file = fopen(filepath, "rb");
     if (!file) return NULL;
@@ -244,7 +248,7 @@ static uint8_t write_pbm_image(const char* filepath, const ImageNpbm* img) {
             // If this is the last byte in the row and there are padding bits,
             // pad with 0s
             if (j == row_bytes - 1 && padding_bits != 0) {
-                byte &= (0xFF << padding_bits);  // Correct the padding bits
+                byte &= (0xFF << padding_bits);
             }
 
             if (fwrite(&byte, 1, 1, file) != 1) {
@@ -258,8 +262,8 @@ static uint8_t write_pbm_image(const char* filepath, const ImageNpbm* img) {
     return true;
 }
 
-static ImageNpbm* create_white_image(uint32_t width, uint32_t height,
-                                     Netpbm type) {
+static ImageNpbm* new_image(uint32_t width, uint32_t height, Netpbm type,
+                            ImageTp c_type) {
     uint8_t channels;
     int precision;
     size_t data_size;
@@ -269,12 +273,15 @@ static ImageNpbm* create_white_image(uint32_t width, uint32_t height,
             channels = 1;
             precision = 1;
             data_size = (width * height + 7) / 8;
+
+            if (c_type != (BLACK | WHITE)) return NULL;
             break;
         case PGM:
             channels = 1;
             precision = 255;
             data_size =
                 width * height * channels * bytes_per_channel(precision);
+            if (c_type != (BLACK | WHITE | GRAYSCALE)) return NULL;
             break;
         case PPM:
             channels = 3;
@@ -286,7 +293,7 @@ static ImageNpbm* create_white_image(uint32_t width, uint32_t height,
             return NULL;
     }
 
-    ImageNpbm* img = new_image(width, height, channels, precision, type);
+    ImageNpbm* img = alloc_image(width, height, channels, precision, type);
     if (!img) return NULL;
 
     // For PBM, set all bits to 0 for white pixels.

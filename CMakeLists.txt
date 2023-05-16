@@ -22,4 +22,8 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
   target_compile_definitions(main PRIVATE DEBUG)
 endif()
 
-# target_compile_definitions(main PRIVATE ALIGN_MEM)
+find_package(OpenCV REQUIRED)
+include_directories(${OpenCV_INCLUDE_DIRS})
+target_link_libraries(main ${OpenCV_LIBS} m)
+
+target_compile_definitions(main PRIVATE ALIGN_MEM)
