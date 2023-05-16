@@ -1,8 +1,8 @@
 #include "image.h"
 
 int main() {
-    uint32_t width = 100;
-    uint32_t height = 100;
+    uint32_t width = 25;
+    uint32_t height = 25;
 
     ImageNpbm* white_image = create_white_image(width, height, PBM);
     if (!white_image) {

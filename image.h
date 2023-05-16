@@ -75,7 +75,7 @@ typedef struct imageNpbm {
 } ImageNpbm;  // 32 bytes struct
 
 /// Return the number of bytes needed to store a channel
-static inline uint8_t bytes_per_channel(int precision) {
+static inline uint8_t bytes_per_channel(uint32_t precision) {
     return (uint8_t)ceil(log2(precision) / 8.0);
 }
 
@@ -90,7 +90,7 @@ static inline ImageNpbm* free_image(ImageNpbm* img) {
 
 /// Allocate a new image.
 static inline ImageNpbm* new_image(size_t width, size_t height,
-                                   uint8_t channels, size_t precision,
+                                   uint8_t channels, uint32_t precision,
                                    Netpbm type) {
     ImageNpbm* img = (ImageNpbm*)malloc(sizeof(ImageNpbm));
     img->data = NULL;
@@ -120,8 +120,7 @@ static inline ImageNpbm* new_image(size_t width, size_t height,
             free_image(img);
             return NULL;
     }
-
-    img->data = (uint8_t*)malloc(data_size);
+    img->data = (uint8_t*)calloc(data_size, sizeof(uint8_t));
     return img->data == NULL ? free_image(img) : img;
 }
 
@@ -227,7 +226,6 @@ static ImageNpbm* read_image(const char* filepath) {
     return NULL;
 }
 
-// Function to write a PBM image to a file
 static uint8_t write_pbm_image(const char* filepath, const ImageNpbm* img) {
     assert(img->type == PBM);
 
@@ -236,10 +234,24 @@ static uint8_t write_pbm_image(const char* filepath, const ImageNpbm* img) {
 
     fprintf(file, "P4\n%u %u\n", img->width, img->height);
 
-    size_t data_size = (img->width * img->height + 7) / 8;
-    if (fwrite(img->data, 1, data_size, file) != data_size) {
-        fclose(file);
-        return false;
+    size_t row_bytes = (img->width + 7) / 8;
+    uint8_t padding_bits = 8 - ((img->width % 8) ? (img->width % 8) : 8);
+
+    for (uint32_t i = 0; i < img->height; i++) {
+        for (uint32_t j = 0; j < row_bytes; j++) {
+            uint8_t byte = img->data[i * row_bytes + j];
+
+            // If this is the last byte in the row and there are padding bits,
+            // pad with 0s
+            if (j == row_bytes - 1 && padding_bits != 0) {
+                byte &= (0xFF << padding_bits);  // Correct the padding bits
+            }
+
+            if (fwrite(&byte, 1, 1, file) != 1) {
+                fclose(file);
+                return false;
+            }
+        }
     }
 
     fclose(file);
@@ -249,7 +261,7 @@ static uint8_t write_pbm_image(const char* filepath, const ImageNpbm* img) {
 static ImageNpbm* create_white_image(uint32_t width, uint32_t height,
                                      Netpbm type) {
     uint8_t channels;
-    size_t precision;
+    int precision;
     size_t data_size;
 
     switch (type) {
@@ -270,12 +282,6 @@ static ImageNpbm* create_white_image(uint32_t width, uint32_t height,
             data_size =
                 width * height * channels * bytes_per_channel(precision);
             break;
-        case PAM:
-            channels = 4;
-            precision = 255;
-            data_size =
-                width * height * (channels + 1) * bytes_per_channel(precision);
-            break;
         default:
             return NULL;
     }
@@ -283,7 +289,17 @@ static ImageNpbm* create_white_image(uint32_t width, uint32_t height,
     ImageNpbm* img = new_image(width, height, channels, precision, type);
     if (!img) return NULL;
 
-    memset(img->data, (type == PBM) ? 0xff : precision, data_size);
+    // For PBM, set all bits to 0 for white pixels.
+    memset(img->data, (type == PBM) ? 0x00 : precision, data_size);
+
+    // For PBM images with width not a multiple of 8, set padding bits to 0.
+    if (type == PBM && width % 8 != 0) {
+        uint8_t padding_bits = 8 - (width % 8);
+        for (uint32_t i = 0; i < height; i++) {
+            uint32_t row_end_byte = ((i + 1) * width - 1) / 8;
+            img->data[row_end_byte] &= ~(0xFF >> (8 - padding_bits));
+        }
+    }
 
     return img;
 }
