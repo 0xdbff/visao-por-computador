@@ -9,14 +9,14 @@ std::pair<std::vector<cv::Rect>, cv::Mat> detectRedRegions(const cv::Mat& image)
 
     // Threshold the HSV image for only red colors
     cv::Mat mask1, mask2;
-    cv::inRange(hsv, cv::Scalar(0, 140, 90), cv::Scalar(10, 255, 255), mask1);
-    cv::inRange(hsv, cv::Scalar(170, 140, 90), cv::Scalar(180, 255, 255), mask2);
+    cv::inRange(hsv, cv::Scalar(0, 140, 90), cv::Scalar(6, 255, 255), mask1);
+    cv::inRange(hsv, cv::Scalar(164, 140, 90), cv::Scalar(180, 255, 255), mask2);
 
     // Combine the above two masks to get our final mask
     cv::Mat mask = mask1 | mask2;
 
     // Perform morphological operations
-    cv::Mat element = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(8, 8));
+    cv::Mat element = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(6, 6));
     cv::erode(mask, mask, element);
     cv::dilate(mask, mask, element);
 
@@ -68,21 +68,27 @@ std::string classifyTrafficSign(const cv::Mat& signImage) {
         double circularity = 4 * CV_PI * area / (perimeter * perimeter);
 
         // If the polygon is close to circular, it might be a 'No Entry' or 'Stop' sign
-        if (circularity > 0.85) {  // Adjust this value as necessary
+        if (circularity > 0.85) {
             // Check for the presence of a horizontal line for 'No Entry' sign
             std::vector<cv::Vec4i> lines;
             cv::HoughLinesP(edges, lines, 1, CV_PI/180, 50, 50, 10);
+            int count_horizontal_lines = 0;
             for (const auto& line : lines) {
                 if (abs(line[1] - line[3]) < 20) {
-                    return "No Entry";
+                    count_horizontal_lines++;
                 }
             }
+            // If more than a threshold number of horizontal lines are found, it's likely a 'No Entry' sign
+            if (count_horizontal_lines > 1) { // You may have to define this constant
+                return "No Entry";
+            }
 
-            // If no horizontal line is found, it could be a stop sign
-            return "Stop";
+            // Check for an octagonal shape for 'Stop' sign
+            if (approx.size() == 8) {
+                return "Stop";
+            }
         }
     }
-
     // If no sign is detected, return an empty string
     return "";
 }
