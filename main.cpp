@@ -1,6 +1,8 @@
+#include <iostream>
 #include <opencv2/opencv.hpp>
 
-std::pair<std::vector<cv::Rect>, cv::Mat> detectRedRegions(const cv::Mat& image) {
+std::pair<std::vector<cv::Rect>, cv::Mat> detectRedRegions(
+    const cv::Mat& image) {
     std::vector<cv::Rect> redRegions;
 
     // Convert the image to the HSV color space
@@ -10,7 +12,8 @@ std::pair<std::vector<cv::Rect>, cv::Mat> detectRedRegions(const cv::Mat& image)
     // Threshold the HSV image for only red colors
     cv::Mat mask1, mask2;
     cv::inRange(hsv, cv::Scalar(0, 140, 90), cv::Scalar(6, 255, 255), mask1);
-    cv::inRange(hsv, cv::Scalar(164, 140, 90), cv::Scalar(180, 255, 255), mask2);
+    cv::inRange(hsv, cv::Scalar(164, 140, 90), cv::Scalar(180, 255, 255),
+                mask2);
 
     // Combine the above two masks to get our final mask
     cv::Mat mask = mask1 | mask2;
@@ -38,98 +41,175 @@ std::pair<std::vector<cv::Rect>, cv::Mat> detectRedRegions(const cv::Mat& image)
     return std::make_pair(redRegions, mask);
 }
 
-std::string classifyTrafficSign(const cv::Mat& signImage) {
-    // Convert to grayscale
-    cv::Mat gray;
-    cv::cvtColor(signImage, gray, cv::COLOR_BGR2GRAY);
+std::pair<std::vector<cv::Vec3f>, cv::Mat> detectBlueCircles(
+    const cv::Mat& image) {
+    std::vector<cv::Vec3f> circles;
 
-    // Blur the image
-    cv::GaussianBlur(gray, gray, cv::Size(5, 5), 0);
+    // Convert the image to the HSV color space
+    cv::Mat hsv;
+    cv::cvtColor(image, hsv, cv::COLOR_BGR2HSV);
 
-    // Use Canny edge detection
-    cv::Mat edges;
-    cv::Canny(gray, edges, 50, 150);
+    // Threshold the HSV image for only blue colors
+    cv::Mat mask;
+    cv::inRange(hsv, cv::Scalar(100, 50, 50), cv::Scalar(140, 255, 255), mask);
 
-    // Find contours in the edge image
-    std::vector<std::vector<cv::Point>> contours;
-    cv::findContours(edges, contours, cv::RETR_TREE, cv::CHAIN_APPROX_SIMPLE);
+    // Perform morphological operations
+    cv::Mat element =
+        cv::getStructuringElement(cv::MORPH_RECT, cv::Size(15, 15));
+    cv::erode(mask, mask, element);
+    cv::dilate(mask, mask, element);
 
-    // Filter contours based on size and shape
-    for (const auto& contour : contours) {
-        // Approximate the contour to a polygon
-        std::vector<cv::Point> approx;
-        cv::approxPolyDP(contour, approx, cv::arcLength(contour, true) * 0.02, true);
+    // Apply Hough Circle Transform to find circles
+    cv::HoughCircles(mask, circles, cv::HOUGH_GRADIENT, 1,
+                     mask.rows / 8,  // Change this value as needed
+                     100, 30,        // Change the two thresholds as needed
+                     0, 0);          // Change the min and max radius as needed
 
-        // Calculate the area and perimeter of the contour
-        double area = cv::contourArea(contour);
-        double perimeter = cv::arcLength(contour, true);
+    return std::make_pair(circles, mask);
+}
 
-        // Calculate circularity
-        double circularity = 4 * CV_PI * area / (perimeter * perimeter);
+std::map<std::string, cv::Mat> loadTemplates() {
+    std::map<std::string, cv::Mat> templates;
+    std::string signs[] = {"ArrowLeft", "ArrowRight", "Car",
+                           "Forbidden", "Highway",    "Stop"};
+    for (const auto& sign : signs) {
+        cv::Mat templateImage =
+            cv::imread("../sinais/" + sign + ".jpg", cv::IMREAD_GRAYSCALE);
 
-        // If the polygon is close to circular, it might be a 'No Entry' or 'Stop' sign
-        if (circularity > 0.85) {
-            // Check for the presence of a horizontal line for 'No Entry' sign
-            std::vector<cv::Vec4i> lines;
-            cv::HoughLinesP(edges, lines, 1, CV_PI/180, 50, 50, 10);
-            int count_horizontal_lines = 0;
-            for (const auto& line : lines) {
-                if (abs(line[1] - line[3]) < 20) {
-                    count_horizontal_lines++;
-                }
-            }
-            // If more than a threshold number of horizontal lines are found, it's likely a 'No Entry' sign
-            if (count_horizontal_lines > 1) { // You may have to define this constant
-                return "No Entry";
-            }
+        std::cout << "load template for: " << sign << std::endl;
 
-            // Check for an octagonal shape for 'Stop' sign
-            if (approx.size() == 8) {
-                return "Stop";
-            }
+        if (templateImage.empty()) {
+            std::cout << "Failed to load template for: " << sign << std::endl;
+            continue;
+        }
+
+        cv::Mat mask = templateImage.clone();
+        cv::threshold(
+            mask, mask, 1, 255,
+            cv::THRESH_BINARY);  // Any value greater than 1 becomes 255
+        templates[sign] = templateImage;
+        templates[sign + "_mask"] =
+            mask;  // Store the mask with a key postfixed with "_mask"
+    }
+    return templates;
+}
+
+std::string matchTemplateWithSigns(const cv::Mat& signImage,
+                                   std::map<std::string, cv::Mat>& templates) {
+    std::string bestMatch;
+    double maxMatch = 0;
+    for (const auto& temp : templates) {
+        // Skip the masks in the templates map
+        if (temp.first.find("_mask") != std::string::npos) {
+            continue;
+        }
+        cv::Mat result;
+        cv::Mat mask =
+            templates[temp.first + "_mask"];  // Get the corresponding mask
+        cv::matchTemplate(signImage, temp.second, result, cv::TM_CCORR_NORMED,
+                          mask);
+        double minVal, maxVal;
+        cv::minMaxLoc(result, &minVal, &maxVal);
+
+        std::cout << "Match for " << temp.first << ": " << maxVal << std::endl;
+
+        if (maxVal > maxMatch) {
+            maxMatch = maxVal;
+            bestMatch = temp.first;
         }
     }
-    // If no sign is detected, return an empty string
-    return "";
+    if (maxMatch > 0.75) {  // 0.75 is a threshold, you can adjust it according
+        return bestMatch;
+    } else {
+        return "";
+    }
+}
+
+std::string classifyTrafficSign(const cv::Mat& signImage,
+                                std::map<std::string, cv::Mat>& templates) {
+    cv::Mat signImageGray = signImage.clone();
+    cv::cvtColor(signImageGray, signImageGray, cv::COLOR_BGR2GRAY);
+    return matchTemplateWithSigns(signImageGray, templates);
 }
 
 int main() {
+    std::cout << "Starting the program..." << std::endl;
+
     cv::VideoCapture cap(0);
 
     if (!cap.isOpened()) {
+        std::cerr << "Error: Video capture is not opened." << std::endl;
         return -1;
     }
 
+    std::cout << "Loading templates..." << std::endl;
+    std::map<std::string, cv::Mat> templates = loadTemplates();
+
     cv::Mat frame;
+
     while (true) {
         cap >> frame;
 
-        // Detect red regions
-        auto [redRegions, mask] = detectRedRegions(frame);
+        auto [redRegions, redMask] = detectRedRegions(frame);
+        auto [blueCircles, blueMask] = detectBlueCircles(frame);
 
-        cv::imshow("Mask", mask);
+        cv::Mat combinedMask = redMask | blueMask;
+        cv::cvtColor(combinedMask, combinedMask, cv::COLOR_GRAY2BGR);
 
-        // Classify each region
         for (const cv::Rect& region : redRegions) {
             cv::Mat regionImage = frame(region);
-            std::string label = classifyTrafficSign(regionImage);
 
-            // Draw bounding box and label only if a sign is detected
-            if (!label.empty()) {
-                cv::rectangle(frame, region, cv::Scalar(0, 255, 0));
-                cv::putText(frame, label, region.tl(), cv::FONT_HERSHEY_SIMPLEX, 1.0, cv::Scalar(255, 255, 255));
+            if (regionImage.rows >= 300 && regionImage.cols >= 400) {
+                std::string label = classifyTrafficSign(regionImage, templates);
+
+                if (!label.empty()) {
+                    std::cout << "Red Match Found: " << label << " at "
+                              << region.x << "," << region.y << std::endl;
+                    cv::rectangle(frame, region, cv::Scalar(0, 255, 0));
+                    cv::putText(frame,
+                                label + " at " + std::to_string(region.x) +
+                                    "," + std::to_string(region.y),
+                                region.tl(), cv::FONT_HERSHEY_SIMPLEX, 1.0,
+                                cv::Scalar(255, 255, 255));
+                }
             }
         }
 
-        // Display the frame
-        cv::imshow("Analysis", frame);
+        for (const cv::Vec3f& circle : blueCircles) {
+            cv::Point center(cvRound(circle[0]), cvRound(circle[1]));
+            int radius = cvRound(circle[2]);
+            cv::circle(frame, center, radius, cv::Scalar(255, 0, 0), 3, 8, 0);
 
-        if (cv::waitKey(30) >= 0) {
+            cv::Mat regionImage = frame(cv::Rect(
+                center.x - radius, center.y - radius, 2 * radius, 2 * radius));
+
+            if (!regionImage.empty() && regionImage.rows >= 100 &&
+                regionImage.cols >= 100) {
+                std::string label = classifyTrafficSign(regionImage, templates);
+
+                if (!label.empty()) {
+                    std::cout << "Blue Match Found: " << label << " at "
+                              << center.x << "," << center.y << std::endl;
+                    cv::putText(frame,
+                                label + " at " + std::to_string(center.x) +
+                                    "," + std::to_string(center.y),
+                                center, cv::FONT_HERSHEY_SIMPLEX, 1.0,
+                                cv::Scalar(255, 255, 255));
+                }
+            }
+        }
+
+        cv::imshow("Analysis", frame);
+        cv::imshow("Mask", combinedMask);
+
+        int key = cv::waitKey(30);
+        if (key == 'x' || key == 'X') {
+            std::cout << "Exiting program..." << std::endl;
             break;
         }
     }
 
-    cv::destroyWindow("Mask");
+    cv::destroyAllWindows();
 
     return 0;
 }

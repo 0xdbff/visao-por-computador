@@ -1,11 +1,11 @@
 cmake_minimum_required(VERSION 3.10)
-project(test_project LANGUAGES C CXX)
+project(test_project LANGUAGES CXX)
 
-set(CMAKE_C_STANDARD 23)
+# set(CMAKE_C_STANDARD 23)
 set(CMAKE_CXX_STANDARD 23)
-set(CMAKE_C_FLAGS_DEBUG "-g -Wall -pedantic")
+# set(CMAKE_C_FLAGS_DEBUG "-g -Wall -pedantic")
 set(CMAKE_CXX_FLAGS_DEBUG "-g -Wall -pedantic")
-set(CMAKE_C_FLAGS_RELEASE "-O3")
+# set(CMAKE_C_FLAGS_RELEASE "-O3")
 set(CMAKE_CXX_FLAGS_RELEASE "-O3")
 
 # Set Debug mode as default #!TODO change
@@ -26,4 +26,4 @@ find_package(OpenCV REQUIRED)
 include_directories(${OpenCV_INCLUDE_DIRS})
 target_link_libraries(main ${OpenCV_LIBS} m)
 
-target_compile_definitions(main PRIVATE ALIGN_MEM)
+# target_compile_definitions(main PRIVATE ALIGN_MEM)
