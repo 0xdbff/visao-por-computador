@@ -103,6 +103,12 @@ std::string matchTemplateWithSigns(const cv::Mat& signImage,
         if (temp.first.find("_mask") != std::string::npos) {
             continue;
         }
+        // Check if the signImage is larger than the template image
+        // if (signImage.rows < temp.second.rows ||
+        //     signImage.cols < temp.second.cols) {
+        //     continue;
+        // }
+
         cv::Mat result;
         cv::Mat mask =
             templates[temp.first + "_mask"];  // Get the corresponding mask
@@ -111,14 +117,13 @@ std::string matchTemplateWithSigns(const cv::Mat& signImage,
         double minVal, maxVal;
         cv::minMaxLoc(result, &minVal, &maxVal);
 
-        std::cout << "Match for " << temp.first << ": " << maxVal << std::endl;
-
         if (maxVal > maxMatch) {
             maxMatch = maxVal;
             bestMatch = temp.first;
         }
     }
-    if (maxMatch > 0.75) {  // 0.75 is a threshold, you can adjust it according
+    if (maxMatch > 0.85) {  // 0.75 is a threshold, you can adjust it according
+        std::cout << "Match for " << bestMatch << ": " << maxMatch << std::endl;
         return bestMatch;
     } else {
         return "";
@@ -129,6 +134,20 @@ std::string classifyTrafficSign(const cv::Mat& signImage,
                                 std::map<std::string, cv::Mat>& templates) {
     cv::Mat signImageGray = signImage.clone();
     cv::cvtColor(signImageGray, signImageGray, cv::COLOR_BGR2GRAY);
+
+    for (const auto& temp : templates) {
+        // Skip the masks in the templates map
+        if (temp.first.find("_mask") != std::string::npos) {
+            continue;
+        }
+
+        if (signImageGray.rows < temp.second.rows ||
+            signImageGray.cols < temp.second.cols) {
+            // Resize signImageGray to the size of template
+            cv::resize(signImageGray, signImageGray, temp.second.size());
+        }
+    }
+
     return matchTemplateWithSigns(signImageGray, templates);
 }
 
@@ -157,21 +176,24 @@ int main() {
         cv::cvtColor(combinedMask, combinedMask, cv::COLOR_GRAY2BGR);
 
         for (const cv::Rect& region : redRegions) {
+            if (region.width <= 0 || region.height <= 0) {  // Add this check
+                continue;
+            }
             cv::Mat regionImage = frame(region);
 
-            if (regionImage.rows >= 300 && regionImage.cols >= 400) {
-                std::string label = classifyTrafficSign(regionImage, templates);
+            cv::imshow("Region", regionImage);
 
-                if (!label.empty()) {
-                    std::cout << "Red Match Found: " << label << " at "
-                              << region.x << "," << region.y << std::endl;
-                    cv::rectangle(frame, region, cv::Scalar(0, 255, 0));
-                    cv::putText(frame,
-                                label + " at " + std::to_string(region.x) +
-                                    "," + std::to_string(region.y),
-                                region.tl(), cv::FONT_HERSHEY_SIMPLEX, 1.0,
-                                cv::Scalar(255, 255, 255));
-                }
+            std::string label = classifyTrafficSign(regionImage, templates);
+
+            if (!label.empty()) {
+                std::cout << "Red Match Found: " << label << " at " << region.x
+                          << "," << region.y << std::endl;
+                cv::rectangle(frame, region, cv::Scalar(0, 255, 0));
+                cv::putText(frame,
+                            label + " at " + std::to_string(region.x) + "," +
+                                std::to_string(region.y),
+                            region.tl(), cv::FONT_HERSHEY_SIMPLEX, 1.0,
+                            cv::Scalar(255, 255, 255));
             }
         }
 
@@ -183,8 +205,9 @@ int main() {
             cv::Mat regionImage = frame(cv::Rect(
                 center.x - radius, center.y - radius, 2 * radius, 2 * radius));
 
-            if (!regionImage.empty() && regionImage.rows >= 100 &&
-                regionImage.cols >= 100) {
+            cv::imshow("Region", regionImage);
+
+            if (!regionImage.empty()) {
                 std::string label = classifyTrafficSign(regionImage, templates);
 
                 if (!label.empty()) {
