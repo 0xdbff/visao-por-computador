@@ -1,5 +1,15 @@
-Aula/
-build/
+src/website/public/images/
+
+/media/*
+/src/media/*
+!/media/MEDIA_FILES_GOTO_HERE
+!/media/logos/*
+!/src/media/MEDIA_FILES_GOTO_HERE_DEVELOPMENT
+
+/static/*
+/src/static/*
+!/static/STATIC_FILES_GOTO_HERE
+!/src/static/STATIC_FILES_GOTO_HERE_DEVELOPMENT
 
 # globs
 Makefile.in
@@ -101,6 +111,7 @@ bld/
 
 # Visual Studio 2015/2017 cache/options directory
 .vs/
+.vscode/
 # Uncomment if you have tasks that create the project's static files in wwwroot
 #wwwroot/
 
@@ -406,4 +417,3 @@ ASALocalRun/
 
 # Local History for Visual Studio
 .localhistory/
-

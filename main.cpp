@@ -75,8 +75,7 @@ class ShapeDetector {
                        cv::Scalar(255), -1);
 
             cv::Mat maskedImg;
-            img.copyTo(maskedImg,
-                       circleMask);  // mask the binary image with the circle
+            img.copyTo(maskedImg, circleMask);
 
             double expectedArea = CV_PI * circle[2] * circle[2];
             double actualArea =
@@ -133,6 +132,43 @@ class ShapeDetector {
 
         return octagons;
     }
+
+    static std::vector<std::pair<std::vector<cv::Point>, cv::Point2f>>
+    detectSquares(const cv::Mat& img) {
+        std::vector<std::vector<cv::Point>> contours;
+        cv::findContours(img.clone(), contours, cv::RETR_TREE,
+                         cv::CHAIN_APPROX_SIMPLE);
+
+        std::vector<std::pair<std::vector<cv::Point>, cv::Point2f>> squares;
+
+        for (const auto& contour : contours) {
+            std::vector<cv::Point> approx;
+            cv::approxPolyDP(contour, approx,
+                             cv::arcLength(contour, true) * 0.02, true);
+
+            if (approx.size() == 4 &&
+                std::fabs(cv::contourArea(approx)) > 1000) {
+                std::array<double, 4> sides = {cv::norm(approx[1] - approx[0]),
+                                               cv::norm(approx[2] - approx[1]),
+                                               cv::norm(approx[3] - approx[2]),
+                                               cv::norm(approx[0] - approx[3])};
+
+                double max_side = *std::max_element(sides.begin(), sides.end());
+                double min_side = *std::min_element(sides.begin(), sides.end());
+
+                if (max_side <= 1.2 * min_side) {
+                    cv::Moments m = cv::moments(contour, false);
+                    squares.emplace_back(
+                        approx,
+                        cv::Point2f(
+                            static_cast<float>(m.m10 / (m.m00 + 1e-5)),
+                            static_cast<float>(m.m01 / (m.m00 + 1e-5))));
+                }
+            }
+        }
+
+        return squares;
+    }
 };
 
 int main() {
@@ -165,10 +201,15 @@ int main() {
         // Send blue mask to detect circles, and mass center
         std::vector<std::pair<cv::Vec3f, cv::Point2f>> blueCircles =
             ShapeDetector::detectCircles(blueMask);
+        // Send blue mask to detect circles, and mass center
         std::vector<std::pair<cv::Vec3f, cv::Point2f>> redCircles =
             ShapeDetector::detectCircles(redMask);
+        // Send blue mask to detect circles, and mass center
         std::vector<std::vector<cv::Point>> octagons =
             ShapeDetector::detectOctagons(redMask);
+        // Send blue mask to detect circles, and mass center
+        std::vector<std::pair<std::vector<cv::Point>, cv::Point2f>> squares =
+            ShapeDetector::detectSquares(colorMask);
 
         for (const auto& bcircle : blueCircles) {
             cv::Vec3f circle = bcircle.first;
@@ -273,6 +314,45 @@ int main() {
             cv::putText(frame, "Stop", cv::Point(cX, cY),
                         cv::FONT_HERSHEY_SIMPLEX, 0.5,
                         cv::Scalar(255, 255, 255), 2);
+        }
+
+        for (const auto& square : squares) {
+            std::vector<cv::Point> contour = square.first;
+            cv::Point2f center_of_mass = square.second;
+
+            cv::Rect boundingRect = cv::boundingRect(contour);
+            cv::Point2f center_of_square =
+                (boundingRect.br() + boundingRect.tl()) * 0.5;
+
+            cv::polylines(frame, contour, true, cv::Scalar(255, 0, 0), 3,
+                          cv::LINE_AA);
+
+            std::string square_center =
+                "(" + std::to_string((int)center_of_square.x) + ", " +
+                std::to_string((int)center_of_square.y) + ")";
+            cv::putText(frame, square_center,
+                        cv::Point(static_cast<int>(center_of_square.x - 40),
+                                  static_cast<int>(center_of_square.y + 20)),
+                        cv::FONT_HERSHEY_SIMPLEX, 0.5,
+                        cv::Scalar(255, 255, 255), 2);
+
+            if (center_of_mass.y > center_of_square.y) {
+                // Center of mass is below the center of the square
+                cv::putText(
+                    frame, "VRAM",
+                    cv::Point(static_cast<int>(center_of_square.x),
+                              static_cast<int>(center_of_square.y - 20)),
+                    cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0x00, 0x00, 0x00),
+                    2);
+            } else {
+                // Center of mass is above the center of the square
+                cv::putText(
+                    frame, "Highway",
+                    cv::Point(static_cast<int>(center_of_square.x),
+                              static_cast<int>(center_of_square.y - 20)),
+                    cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0x00, 0x00, 0x00),
+                    2);
+            }
         }
 
         cv::imshow("binary", colorMask);
