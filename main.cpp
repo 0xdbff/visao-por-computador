@@ -14,7 +14,7 @@
 #define CIRCLE_DETECTION_PARAM2 20
 #define MIN_RADIUS 20
 #define MAX_RADIUS 600
-#define OCTAGON_APPROXIMATION_PARAM 0.02
+#define OCTAGON_APPROXIMATION_PARAM 0.04
 #define OCTAGON_CIRCULARITY_THRESHOLD 0.65
 
 class ColorDetector {
@@ -60,27 +60,41 @@ class ColorDetector {
 
 class ShapeDetector {
    public:
-    static std::vector<cv::Vec3f> detectCircles(const cv::Mat& img) {
+    static std::vector<std::pair<cv::Vec3f, cv::Point2f>> detectCircles(
+        const cv::Mat& img) {
         std::vector<cv::Vec3f> circles;
         cv::HoughCircles(img, circles, cv::HOUGH_GRADIENT, 1, img.rows / 8,
                          CIRCLE_DETECTION_PARAM1, CIRCLE_DETECTION_PARAM2,
                          MIN_RADIUS, MAX_RADIUS);
 
-        std::vector<cv::Vec3f> filtered_circles;
+        std::vector<std::pair<cv::Vec3f, cv::Point2f>> result;
+
         for (const auto& circle : circles) {
             cv::Mat circleMask = cv::Mat::zeros(img.rows, img.cols, CV_8U);
             cv::circle(circleMask, cv::Point(circle[0], circle[1]), circle[2],
                        cv::Scalar(255), -1);
 
-            double expectedArea = CV_PI * circle[2] * circle[2];
-            double actualArea = cv::countNonZero(img & circleMask);
+            cv::Mat maskedImg;
+            img.copyTo(maskedImg,
+                       circleMask);  // mask the binary image with the circle
 
-            if (actualArea / expectedArea > 0.4) {
-                filtered_circles.push_back(circle);
+            double expectedArea = CV_PI * circle[2] * circle[2];
+            double actualArea =
+                cv::countNonZero(maskedImg);  // count the number of white
+                                              // pixels inside the circle
+
+            if (actualArea / expectedArea > 0.48) {
+                cv::Moments mu = cv::moments(
+                    maskedImg,
+                    false);  // compute the moments of the masked binary image
+                cv::Point2f mc =
+                    cv::Point2f(static_cast<float>(mu.m10 / (mu.m00 + 1e-5)),
+                                static_cast<float>(mu.m01 / (mu.m00 + 1e-5)));
+                result.emplace_back(circle, mc);
             }
         }
 
-        return filtered_circles;
+        return result;
     }
 
     static std::vector<std::vector<cv::Point>> detectOctagons(
@@ -108,9 +122,9 @@ class ShapeDetector {
                     maxEdgeLength = std::max(maxEdgeLength, edgeLength);
                 }
                 double edgeLengthRatio = minEdgeLength / maxEdgeLength;
-                if (edgeLengthRatio < 0.8) {  // adjust this threshold as needed
-                    continue;  // discard the contour if the edge lengths vary
-                               // too much
+                // Do not match if the contours are not aprox equal in lenght.
+                if (edgeLengthRatio < 0.7) {
+                    continue;
                 }
 
                 octagons.push_back(approx);
@@ -148,33 +162,97 @@ int main() {
         cv::Mat blueMask = ColorDetector::detectBlue(frame);
         cv::Mat colorMask = redMask | blueMask;
 
-        std::vector<cv::Vec3f> circles =
-            ShapeDetector::detectCircles(colorMask);
+        // Send blue mask to detect circles, and mass center
+        std::vector<std::pair<cv::Vec3f, cv::Point2f>> blueCircles =
+            ShapeDetector::detectCircles(blueMask);
+        std::vector<std::pair<cv::Vec3f, cv::Point2f>> redCircles =
+            ShapeDetector::detectCircles(redMask);
         std::vector<std::vector<cv::Point>> octagons =
             ShapeDetector::detectOctagons(redMask);
 
-        for (const auto& circle : circles) {
-            if (circle[2] < 20 || circle[2] > 500) continue;
+        for (const auto& bcircle : blueCircles) {
+            cv::Vec3f circle = bcircle.first;
+            cv::Point2f center_of_mass = bcircle.second;
 
-            cv::Rect circleRect(circle[0] - circle[2], circle[1] - circle[2],
-                                2 * circle[2], 2 * circle[2]);
-            for (const auto& octagon : octagons) {
-                cv::Rect octagonRect = cv::boundingRect(octagon);
-                double intersectionArea = (circleRect & octagonRect).area();
-                double unionArea =
-                    circleRect.area() + octagonRect.area() - intersectionArea;
-                double overlap = intersectionArea / unionArea;
-                if (overlap > overlapThreshold) {
-                    continue;  // skip this circle if it overlaps too much with
-                               // an octagon
-                }
+            if (circle[2] < 10 || circle[2] > 500) {
+                continue;
             }
 
-            cv::circle(frame, cv::Point(circle[0], circle[1]), circle[2],
-                       cv::Scalar(0, 255, 0), 3, cv::LINE_AA);
-            cv::putText(frame, "Circle", cv::Point(circle[0], circle[1]),
+            cv::circle(frame,
+                       cv::Point(static_cast<int>(circle[0]),
+                                 static_cast<int>(circle[1])),
+                       static_cast<int>(circle[2]), cv::Scalar(0, 255, 0), 3,
+                       cv::LINE_AA);
+
+            double delta =
+                cv::Point2f(circle[0], circle[1]).x - center_of_mass.x;
+
+            std::string circle_center = "(" + std::to_string((int)circle[0]) +
+                                        ", " + std::to_string((int)circle[1]) +
+                                        ")";
+            cv::putText(frame, circle_center,
+                        cv::Point(static_cast<int>(circle[0] - 40),
+                                  static_cast<int>(circle[1] + 20)),
                         cv::FONT_HERSHEY_SIMPLEX, 0.5,
-                        cv::Scalar(255, 255, 255), 2);
+                        cv::Scalar(0x00, 0x00, 0x00), 2);
+
+            if (center_of_mass.x > circle[0]) {
+                cv::putText(frame, "Turn Left",
+                            cv::Point(static_cast<int>(circle[0] - 40),
+                                      static_cast<int>(circle[1] - 20)),
+                            cv::FONT_HERSHEY_SIMPLEX, 0.5,
+                            cv::Scalar(40, 255, 50), 2);
+
+                std::cout << "TurnRight\tDetected blue circle: center: ("
+                          << circle[0] << ", " << circle[1]
+                          << "), center of Mass: (" << center_of_mass.x << ", "
+                          << center_of_mass.y << "), delta: " << delta
+                          << std::endl;
+            } else {
+                cv::putText(frame, "Turn Right",
+                            cv::Point(static_cast<int>(circle[0] - 40),
+                                      static_cast<int>(circle[1] - 20)),
+                            cv::FONT_HERSHEY_SIMPLEX, 0.5,
+                            cv::Scalar(40, 255, 50), 2);
+
+                std::cout << "TurnLeft\tDetected blue circle: center: ("
+                          << circle[0] << ", " << circle[1]
+                          << "), center of Mass: (" << center_of_mass.x << ", "
+                          << center_of_mass.y << "), delta: " << delta
+                          << std::endl;
+            }
+        }
+
+        for (const auto& rcircle : redCircles) {
+            cv::Vec3f circle = rcircle.first;
+
+            if (circle[2] < 10 || circle[2] > 500) {
+                continue;
+            }
+
+            cv::circle(frame,
+                       cv::Point(static_cast<int>(circle[0]),
+                                 static_cast<int>(circle[1])),
+                       static_cast<int>(circle[2]), cv::Scalar(0, 255, 0), 3,
+                       cv::LINE_AA);
+
+            std::cout << "STOP\t\tDetected red circle: center: (" << circle[0]
+                      << ", " << circle[1] << std::endl;
+
+            std::string circle_center = "(" + std::to_string((int)circle[0]) +
+                                        ", " + std::to_string((int)circle[1]) +
+                                        ")";
+            cv::putText(frame, circle_center,
+                        cv::Point(static_cast<int>(circle[0] - 40),
+                                  static_cast<int>(circle[1] + 20)),
+                        cv::FONT_HERSHEY_SIMPLEX, 0.5,
+                        cv::Scalar(0x00, 0x00, 0x00), 2);
+
+            cv::putText(frame, "Stop",
+                        cv::Point(static_cast<int>(circle[0] - 40),
+                                  static_cast<int>(circle[1] - 20)),
+                        cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(40, 255, 50),
+                        2);
         }
 
         for (const auto& octagon : octagons) {
@@ -186,13 +264,19 @@ int main() {
             int cX = static_cast<int>(M.m10 / M.m00);
             int cY = static_cast<int>(M.m01 / M.m00);
 
-            cv::putText(frame, "Octagon", cv::Point(cX, cY),
+            std::string octagon_center =
+                "(" + std::to_string(cX) + ", " + std::to_string(cY) + ")";
+            cv::putText(frame, octagon_center, cv::Point(cX - 40, cY + 20),
+                        cv::FONT_HERSHEY_SIMPLEX, 0.5,
+                        cv::Scalar(255, 255, 255), 2);
+
+            cv::putText(frame, "Stop", cv::Point(cX, cY),
                         cv::FONT_HERSHEY_SIMPLEX, 0.5,
                         cv::Scalar(255, 255, 255), 2);
         }
 
-        cv::imshow("frame", frame);
-        cv::imshow("color", colorMask);
+        cv::imshow("binary", colorMask);
+        cv::imshow("Analyser", frame);
 
         int key = cv::waitKey(30);
         if (key == 'x' || key == 'X') {
