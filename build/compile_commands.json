@@ -1,0 +1,22 @@
+[
+{
+  "directory": "/home/db/dev/visao-por-computador/build",
+  "command": "/usr/bin/c++ -DDEBUG -I/home/db/dev/visao-por-computador/include -isystem /usr/local/include/opencv4 -g -Wall -pedantic -std=gnu++17 -o CMakeFiles/main.dir/src/Analyser.cpp.o -c /home/db/dev/visao-por-computador/src/Analyser.cpp",
+  "file": "/home/db/dev/visao-por-computador/src/Analyser.cpp"
+},
+{
+  "directory": "/home/db/dev/visao-por-computador/build",
+  "command": "/usr/bin/c++ -DDEBUG -I/home/db/dev/visao-por-computador/include -isystem /usr/local/include/opencv4 -g -Wall -pedantic -std=gnu++17 -o CMakeFiles/main.dir/src/ColorDetector.cpp.o -c /home/db/dev/visao-por-computador/src/ColorDetector.cpp",
+  "file": "/home/db/dev/visao-por-computador/src/ColorDetector.cpp"
+},
+{
+  "directory": "/home/db/dev/visao-por-computador/build",
+  "command": "/usr/bin/c++ -DDEBUG -I/home/db/dev/visao-por-computador/include -isystem /usr/local/include/opencv4 -g -Wall -pedantic -std=gnu++17 -o CMakeFiles/main.dir/src/ShapeDetector.cpp.o -c /home/db/dev/visao-por-computador/src/ShapeDetector.cpp",
+  "file": "/home/db/dev/visao-por-computador/src/ShapeDetector.cpp"
+},
+{
+  "directory": "/home/db/dev/visao-por-computador/build",
+  "command": "/usr/bin/c++ -DDEBUG -I/home/db/dev/visao-por-computador/include -isystem /usr/local/include/opencv4 -g -Wall -pedantic -std=gnu++17 -o CMakeFiles/main.dir/src/main.cpp.o -c /home/db/dev/visao-por-computador/src/main.cpp",
+  "file": "/home/db/dev/visao-por-computador/src/main.cpp"
+}
+]

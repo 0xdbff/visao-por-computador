@@ -1,0 +1,3 @@
+/home/db/dev/visao-por-computador/build/CMakeFiles/main.dir
+/home/db/dev/visao-por-computador/build/CMakeFiles/edit_cache.dir
+/home/db/dev/visao-por-computador/build/CMakeFiles/rebuild_cache.dir
