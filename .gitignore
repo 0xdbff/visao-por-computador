@@ -1,5 +1,7 @@
 src/website/public/images/
 
+build/
+
 .cache/
 
 /media/*
