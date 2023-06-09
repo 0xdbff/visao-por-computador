@@ -1,5 +1,7 @@
 src/website/public/images/
 
+.cache/
+
 /media/*
 /src/media/*
 !/media/MEDIA_FILES_GOTO_HERE
